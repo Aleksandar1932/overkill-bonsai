@@ -1,45 +1,71 @@
 #include <Arduino.h>
+#include <ESP8266WiFi.h>
+#include <WiFiClient.h>
+
 /* Change these values based on your calibration values */
-#define soilWet 500 // Define max value we consider soil 'wet'
-#define soilDry 750 // Define min value we consider soil 'dry'
+#define WET_THRESHOLD 500     // Define max value we consider soil 'wet'
+#define DRY_TREHSHOLD 750     // Define min value we consider soil 'dry'
+#define MEASURE_INTERVAL 1000 // Define how often we check soil moisture (milliseconds)
 
 // Sensor pins
 #define sensorPower 0
 #define sensorPin A0
 
-//  This function returns the analog soil moisture measurement
 int readSensor()
 {
-  digitalWrite(sensorPower, HIGH); // Turn the sensor ON
-  delay(10);                       // Allow power to settle
-  int val = analogRead(sensorPin); // Read the analog value form sensor
-  digitalWrite(sensorPower, LOW);  // Turn the sensor OFF
-  return val;                      // Return analog moisture value
+  digitalWrite(sensorPower, HIGH);
+  delay(10);
+  int val = analogRead(sensorPin);
+  digitalWrite(sensorPower, LOW);
+  return val;
+}
+
+void connectToWifi()
+{
+  const char *ssid = "Ivanovski WIFI";
+  const char *password = "123ivanovski123";
+
+  WiFi.mode(WIFI_AP); // Access Point mode
+  WiFi.begin(ssid, password);
+  Serial.println("Connecting to ");
+  Serial.print(ssid);
+
+  // Wait for WiFi to connect
+  while (WiFi.status() == WL_CONNECTED)
+  {
+    Serial.print(".");
+  }
+  Serial.println("");
+  Serial.print("Connected to ");
+  Serial.println(ssid);
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+}
+
+void setupSoilMoistureSensor()
+{
+  pinMode(sensorPower, OUTPUT);
+  digitalWrite(sensorPower, LOW);
 }
 
 void setup()
 {
-  pinMode(sensorPower, OUTPUT);
-
-  // Initially keep the sensor OFF
-  digitalWrite(sensorPower, LOW);
-
   Serial.begin(9600);
+  connectToWifi();
+  setupSoilMoistureSensor();
 }
 
-void loop()
+void logMoisture(int moisture)
 {
-  // get the reading from the function below and print it
-  int moisture = readSensor();
   Serial.print("Analog Output: ");
   Serial.println(moisture);
 
   // Determine status of our soil
-  if (moisture < soilWet)
+  if (moisture < WET_THRESHOLD)
   {
     Serial.println("Status: Soil is too wet");
   }
-  else if (moisture >= soilWet && moisture < soilDry)
+  else if (moisture >= WET_THRESHOLD && moisture < DRY_TREHSHOLD)
   {
     Serial.println("Status: Soil moisture is perfect");
   }
@@ -47,7 +73,11 @@ void loop()
   {
     Serial.println("Status: Soil is too dry - time to water!");
   }
+}
 
-  delay(1000);
-  Serial.println();
+void loop()
+{
+  int moisture = readSensor();
+  logMoisture(moisture);
+  delay(MEASURE_INTERVAL);
 }
