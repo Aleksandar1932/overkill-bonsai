@@ -1,78 +1,28 @@
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
 #include <WiFiClient.h>
+#include <ESP8266WebServer.h>
+#include <ESP8266WiFiMulti.h>
+#include <ESP8266mDNS.h>
+#include <Moisture.h>
+#include <Constants.h>
 
-/* Change these values based on your calibration values */
-#define WET_THRESHOLD 500     // Define max value we consider soil 'wet'
-#define DRY_TREHSHOLD 750     // Define min value we consider soil 'dry'
-#define MEASURE_INTERVAL 1000 // Define how often we check soil moisture (milliseconds)
+ESP8266WebServer server(80);
+ESP8266WiFiMulti wifiMulti;
 
-// Sensor pins
-#define sensorPower 0
-#define sensorPin A0
-
-int readSensor()
-{
-  digitalWrite(sensorPower, HIGH);
-  delay(10);
-  int val = analogRead(sensorPin);
-  digitalWrite(sensorPower, LOW);
-  return val;
-}
-
-void connectToWifi()
-{
-  const char *ssid = "Ivanovski WIFI";
-  const char *password = "123ivanovski123";
-
-  WiFi.mode(WIFI_AP); // Access Point mode
-  WiFi.begin(ssid, password);
-  Serial.println("Connecting to ");
-  Serial.print(ssid);
-
-  // Wait for WiFi to connect
-  while (WiFi.status() == WL_CONNECTED)
-  {
-    Serial.print(".");
-  }
-  Serial.println("");
-  Serial.print("Connected to ");
-  Serial.println(ssid);
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
-}
-
-void setupSoilMoistureSensor()
-{
-  pinMode(sensorPower, OUTPUT);
-  digitalWrite(sensorPower, LOW);
-}
+void handleMeasurement();
+void handleDisplayHTML();
+void connectToWifi();
+void handleDisplayPrettyHTML();
 
 void setup()
 {
   Serial.begin(9600);
   connectToWifi();
   setupSoilMoistureSensor();
-}
-
-void logMoisture(int moisture)
-{
-  Serial.print("Analog Output: ");
-  Serial.println(moisture);
-
-  // Determine status of our soil
-  if (moisture < WET_THRESHOLD)
-  {
-    Serial.println("Status: Soil is too wet");
-  }
-  else if (moisture >= WET_THRESHOLD && moisture < DRY_TREHSHOLD)
-  {
-    Serial.println("Status: Soil moisture is perfect");
-  }
-  else
-  {
-    Serial.println("Status: Soil is too dry - time to water!");
-  }
+  server.on("/", handleMeasurement);
+  server.on("/display", handleDisplayHTML);
+  server.begin();
 }
 
 void loop()
@@ -80,4 +30,42 @@ void loop()
   int moisture = readSensor();
   logMoisture(moisture);
   delay(MEASURE_INTERVAL);
+  server.handleClient();
+}
+
+void handleMeasurement()
+{
+  int moisture = readSensor();
+  server.send(200, "application/json", "{\"moisture\": " + String(moisture) + ", \"status\": \"" + (moisture < WET_THRESHOLD ? "wet" : (moisture >= WET_THRESHOLD && moisture < DRY_TREHSHOLD ? "perfect" : "dry")) + "\"}");
+}
+
+void handleDisplayHTML()
+{
+  server.send(200, "text/html", "<html><head><title>ESP8266 Soil Moisture Sensor</title></head><body><h1>Aleksandar's Bonsai</h1><p>Moisture: " + String(readSensor()) + "</p></body></html>");
+}
+
+void connectToWifi()
+{
+  wifiMulti.addAP(getenv("WIFI_SSID"), getenv("WIFI_PASSWORD"));
+  Serial.println("Connecting ...");
+
+  while (wifiMulti.run() != WL_CONNECTED)
+  {
+    delay(250);
+    Serial.print('.');
+  }
+  Serial.println('\n');
+  Serial.print("Connected to ");
+  Serial.println(WiFi.SSID());
+  Serial.print("IP address:\t");
+  Serial.println(WiFi.localIP());
+
+  if (MDNS.begin(getenv("MDNS_HOSTNAME")))
+  {
+    Serial.println("mDNS responder started");
+  }
+  else
+  {
+    Serial.println("Error setting up MDNS responder!");
+  }
 }
